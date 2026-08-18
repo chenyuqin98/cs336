@@ -189,10 +189,10 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     rmha = my_torch.RopeMHA(d_model, num_heads, theta, max_seq_len)
-    rmha.mha.query_linear.load_state_dict({"weight": q_proj_weight})
-    rmha.mha.key_linear.load_state_dict({"weight": k_proj_weight})
-    rmha.mha.value_linear.load_state_dict({"weight": v_proj_weight})
-    rmha.mha.out_linear.load_state_dict({"weight": o_proj_weight})
+    rmha.query_linear.load_state_dict({"weight": q_proj_weight})
+    rmha.key_linear.load_state_dict({"weight": k_proj_weight})
+    rmha.value_linear.load_state_dict({"weight": v_proj_weight})
+    rmha.out_linear.load_state_dict({"weight": o_proj_weight})
     return rmha(in_features, token_positions)
 
 

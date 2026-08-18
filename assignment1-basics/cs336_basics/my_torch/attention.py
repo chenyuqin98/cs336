@@ -1,5 +1,5 @@
 import torch
-from jaxtyping import Float, Bool
+from jaxtyping import Float, Bool, Int
 
 from .softmax import softmax
 from .linear import Linear
@@ -55,14 +55,27 @@ class MultiHeadSelfAttention(torch.nn.Module):
         x: Float[torch.Tensor, "... sequence_length heads d_k"] = x.view(*x.shape[:-1], self.num_heads, self.d_k)
         return x.transpose(-3, -2)
 
+    def _position_encode(
+        self,
+        query: Float[torch.Tensor, "... heads sequence_length d_k"],
+        key: Float[torch.Tensor, "... heads sequence_length d_k"],
+        token_positions: Int[torch.Tensor, "... sequence_length"] | None,
+    ) -> tuple[Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]]:
+        # 基类不做位置编码；RopeMHA 覆写这个钩子来旋转 q/k，forward 主体只写一份。
+        return query, key
+
     def forward(
-        self, x: Float[torch.Tensor, "... sequence_length d_model"]
+        self,
+        x: Float[torch.Tensor, "... sequence_length d_model"],
+        token_positions: Int[torch.Tensor, "... sequence_length"] | None = None,
     ) -> Float[torch.Tensor, "... sequence_length d_model"]:
         sequence_length = x.size(-2)
 
         query: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.query_linear(x))
         key: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.key_linear(x))
         value: Float[torch.Tensor, "... heads sequence_length d_v"] = self._split_heads(self.value_linear(x))
+
+        query, key = self._position_encode(query, key, token_positions)
 
         # causal mask: 位置 i 只能 attend j <= i。形状 (seq, seq)，广播到所有 batch 和 head。
         mask = torch.tril(torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device))
@@ -74,31 +87,24 @@ class MultiHeadSelfAttention(torch.nn.Module):
         return self.out_linear(output)
 
 
-class RopeMHA(torch.nn.Module):
+class RopeMHA(MultiHeadSelfAttention):
+    """带 RoPE 的多头自注意力。
+
+    直接继承 MultiHeadSelfAttention（而不是把它包一层），所以参数就是
+    query_linear / key_linear / ... 本身，没有 `mha.mha.` 这种嵌套前缀。
+    """
+
     def __init__(self, d_model: int, num_heads: int, theta: float, max_seq_len: int, device=None, dtype=None):
-        super().__init__()
-        self.mha = MultiHeadSelfAttention(d_model, num_heads, device=device, dtype=dtype)
-        self.rope = RoPE(theta, d_model // num_heads, max_seq_len, device=device)
+        super().__init__(d_model, num_heads, device=device, dtype=dtype)
+        self.rope = RoPE(theta, self.d_k, max_seq_len, device=device)
 
-    def forward(
+    def _position_encode(
         self,
-        x: Float[torch.Tensor, "... sequence_length d_model"],
-        token_positions: Float[torch.Tensor, "... sequence_length"],
-    ) -> Float[torch.Tensor, "... sequence_length d_model"]:
-        sequence_length = x.size(-2)
-        
-        query: Float[torch.Tensor, "... heads sequence_length d_k"] = self.mha._split_heads(self.mha.query_linear(x))
-        key: Float[torch.Tensor, "... heads sequence_length d_k"] = self.mha._split_heads(self.mha.key_linear(x))
-        value: Float[torch.Tensor, "... heads sequence_length d_v"] = self.mha._split_heads(self.mha.value_linear(x))
-
-        query = self.rope(query, token_positions)
-        key = self.rope(key, token_positions)
-
-        # causal mask: 位置 i 只能 attend j <= i。形状 (seq, seq)，广播到所有 batch 和 head。
-        mask = torch.tril(torch.ones(sequence_length, sequence_length, dtype=torch.bool, device=x.device))
-
-        output: Float[torch.Tensor, "... heads sequence_length d_k"] = self.mha.sdpa(query, key, value, mask)  # (..., heads, sequence_length, d_k)
-
-        # 合并 head：transpose 后布局不再连续，必须用 reshape 而不是 view。
-        output: Float[torch.Tensor, "... sequence_length d_model"] = output.transpose(-3, -2).reshape(*x.shape[:-1], self.mha.d_model)
-        return self.mha.out_linear(output)
+        query: Float[torch.Tensor, "... heads sequence_length d_k"],
+        key: Float[torch.Tensor, "... heads sequence_length d_k"],
+        token_positions: Int[torch.Tensor, "... sequence_length"] | None,
+    ) -> tuple[Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]]:
+        if token_positions is None:
+            token_positions = torch.arange(query.size(-2), device=query.device)
+        # value 不转，只有 q/k 需要带上相对位置信息。
+        return self.rope(query, token_positions), self.rope(key, token_positions)
