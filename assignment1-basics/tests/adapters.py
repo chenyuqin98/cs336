@@ -86,7 +86,14 @@ def run_swiglu(
     # swiglu.w1.weight.data = w1_weight
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
-    swiglu = my_torch.SwiGLU(d_model, d_ff, w1_weight, w2_weight, w3_weight)
+    swiglu = my_torch.SwiGLU(d_model, d_ff)
+    swiglu.load_state_dict(
+        {
+            "linear1.weight": w1_weight,
+            "linear2.weight": w2_weight,
+            "linear3.weight": w3_weight,
+        }
+    )
     return swiglu(in_features)
 
 
@@ -144,10 +151,12 @@ def run_multihead_self_attention(
         implementation with the given QKV projection weights and input features.
     """
     mha = my_torch.MultiHeadSelfAttention(d_model, num_heads)
-    mha.query_linear.load_state_dict({"weight": q_proj_weight})
-    mha.key_linear.load_state_dict({"weight": k_proj_weight})
-    mha.value_linear.load_state_dict({"weight": v_proj_weight})
-    mha.out_linear.load_state_dict({"weight": o_proj_weight})
+    mha.load_state_dict({
+        "q_proj.weight": q_proj_weight,
+        "k_proj.weight": k_proj_weight,
+        "v_proj.weight": v_proj_weight,
+        "output_proj.weight": o_proj_weight
+    })
     return mha(in_features)
 
 
@@ -189,10 +198,12 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     rmha = my_torch.RopeMHA(d_model, num_heads, theta, max_seq_len)
-    rmha.query_linear.load_state_dict({"weight": q_proj_weight})
-    rmha.key_linear.load_state_dict({"weight": k_proj_weight})
-    rmha.value_linear.load_state_dict({"weight": v_proj_weight})
-    rmha.out_linear.load_state_dict({"weight": o_proj_weight})
+    rmha.load_state_dict({
+        "q_proj.weight": q_proj_weight,
+        "k_proj.weight": k_proj_weight,
+        "v_proj.weight": v_proj_weight,
+        "output_proj.weight": o_proj_weight
+    })
     return rmha(in_features, token_positions)
 
 

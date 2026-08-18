@@ -40,10 +40,10 @@ class MultiHeadSelfAttention(torch.nn.Module):
 
         # W_Q ∈ R^{(h*d_k) x d_model}，而 h*d_k == d_model，所以四个投影都是 (d_model, d_model)。
         # 每个 head 拥有其中连续的 d_k 行，一次 matmul 就算完所有 head。
-        self.query_linear: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.key_linear: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.value_linear: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
-        self.out_linear: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.q_proj: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.k_proj: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.v_proj: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
+        self.output_proj: Linear = Linear(d_model, d_model, device=device, dtype=dtype)
 
         self.sdpa: scale_dot_product_attention = scale_dot_product_attention()
 
@@ -71,9 +71,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
     ) -> Float[torch.Tensor, "... sequence_length d_model"]:
         sequence_length = x.size(-2)
 
-        query: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.query_linear(x))
-        key: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.key_linear(x))
-        value: Float[torch.Tensor, "... heads sequence_length d_v"] = self._split_heads(self.value_linear(x))
+        query: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.q_proj(x))
+        key: Float[torch.Tensor, "... heads sequence_length d_k"] = self._split_heads(self.k_proj(x))
+        value: Float[torch.Tensor, "... heads sequence_length d_v"] = self._split_heads(self.v_proj(x))
 
         query, key = self._position_encode(query, key, token_positions)
 
@@ -84,14 +84,14 @@ class MultiHeadSelfAttention(torch.nn.Module):
 
         # 合并 head：transpose 后布局不再连续，必须用 reshape 而不是 view。
         output = output.transpose(-3, -2).reshape(*x.shape[:-1], self.d_model)
-        return self.out_linear(output)
+        return self.output_proj(output)
 
 
 class RopeMHA(MultiHeadSelfAttention):
     """带 RoPE 的多头自注意力。
 
     直接继承 MultiHeadSelfAttention（而不是把它包一层），所以参数就是
-    query_linear / key_linear / ... 本身，没有 `mha.mha.` 这种嵌套前缀。
+    q_proj_weight / key_linear / ... 本身，没有 `mha.mha.` 这种嵌套前缀。
     """
 
     def __init__(self, d_model: int, num_heads: int, theta: float, max_seq_len: int, device=None, dtype=None):
