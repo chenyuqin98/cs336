@@ -1,0 +1,43 @@
+# 数据集（TinyStories / OpenWebText，本地 13GB，不入库）
+assignment1-basics/data/
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+
+# 虚拟环境
+.venv/
+venv/
+
+# 工具缓存
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# 训练产物
+*.pt
+*.pth
+*.ckpt
+wandb/
+log/
+runs/
+
+# macOS / 编辑器
+.DS_Store
+.idea/
+.vscode/
+
+# 其他 assignment 暂未提交，做完后从这里删掉对应行
+assignment2-systems/
+assignment3-scaling/
+assignment4-data/
+assignment5-alignment/
+lectures/
+!assignment1-basics/tests/fixtures/ts_tests/model.pt
