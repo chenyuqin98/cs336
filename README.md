@@ -34,3 +34,14 @@ A1 已验证：46 failed / 2 skipped，全是 `NotImplementedError` —— 这�
 ## 建议顺序
 
 A1 全做（这是整门课的地基）→ lectures 边读边补 → A2 的 CPU 部分（DDP/FSDP 手写一遍价值很高）→ A5 测试 → A4 测试 → A3 只做 isoflops 拟合。
+
+## 来源与许可
+
+`assignment1-basics/` 下的脚手架、测试、讲义 PDF 来自
+[stanford-cs336/assignment1-basics](https://github.com/stanford-cs336/assignment1-basics)，
+MIT License，© 2025 Stanford University，原 `LICENSE` 文件已随目录保留。首个 commit
+（`Vendor CS336 assignment1-basics official scaffold`）就是未经修改的官方脚手架，
+方便对照出后续哪些是我自己写的。
+
+`cs336_basics/my_torch/` 与 `tests/adapters.py` 的改动是我个人的自学实现，
+非在读学生的课程提交，与 Stanford 无隶属关系。
