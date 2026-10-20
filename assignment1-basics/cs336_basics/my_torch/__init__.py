@@ -5,6 +5,6 @@ from .activation import SiLU, SwiGLU
 from .rope import RoPE
 from .softmax import softmax
 from .attention import scale_dot_product_attention, MultiHeadSelfAttention, RopeMHA
-from .transformer import PreNormTransformerBlock
+from .transformer import PreNormTransformerBlock, TransformerLM
 
 # __all__ = ["Linear"]

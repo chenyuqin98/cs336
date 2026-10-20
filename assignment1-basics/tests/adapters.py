@@ -30,7 +30,7 @@ def run_linear(
         Float[Tensor, "... d_out"]: The transformed output of your linear module.
     """
     linear = my_torch.Linear(d_in, d_out)
-    linear.load_state_dict({'weight': weights})
+    linear.load_state_dict({"weight": weights})
     return linear(in_features)
 
 
@@ -53,7 +53,7 @@ def run_embedding(
         Float[Tensor, "... d_model"]: Batch of embeddings returned by your Embedding layer.
     """
     emb = my_torch.Embedding(vocab_size, d_model)
-    emb.load_state_dict({'weight': weights})
+    emb.load_state_dict({"weight": weights})
     return emb(token_ids)
 
 
@@ -89,9 +89,9 @@ def run_swiglu(
     swiglu = my_torch.SwiGLU(d_model, d_ff)
     swiglu.load_state_dict(
         {
-            "linear1.weight": w1_weight,
-            "linear2.weight": w2_weight,
-            "linear3.weight": w3_weight,
+            "w1.weight": w1_weight,
+            "w2.weight": w2_weight,
+            "w3.weight": w3_weight,
         }
     )
     return swiglu(in_features)
@@ -151,12 +151,14 @@ def run_multihead_self_attention(
         implementation with the given QKV projection weights and input features.
     """
     mha = my_torch.MultiHeadSelfAttention(d_model, num_heads)
-    mha.load_state_dict({
-        "q_proj.weight": q_proj_weight,
-        "k_proj.weight": k_proj_weight,
-        "v_proj.weight": v_proj_weight,
-        "output_proj.weight": o_proj_weight
-    })
+    mha.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
     return mha(in_features)
 
 
@@ -198,12 +200,14 @@ def run_multihead_self_attention_with_rope(
         implementation with the given QKV projection weights and input features.
     """
     rmha = my_torch.RopeMHA(d_model, num_heads, theta, max_seq_len)
-    rmha.load_state_dict({
-        "q_proj.weight": q_proj_weight,
-        "k_proj.weight": k_proj_weight,
-        "v_proj.weight": v_proj_weight,
-        "output_proj.weight": o_proj_weight
-    })
+    rmha.load_state_dict(
+        {
+            "q_proj.weight": q_proj_weight,
+            "k_proj.weight": k_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
     return rmha(in_features, token_positions)
 
 
@@ -301,6 +305,7 @@ def run_transformer_block(
     """
     model = my_torch.PreNormTransformerBlock(d_model, num_heads, d_ff, theta, max_seq_len)
     model.load_state_dict(weights)
+    # trainable parameters:
     return model(in_features)
 
 
@@ -383,7 +388,9 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    TransformerLM = my_torch.TransformerLM(vocab_size, context_length, d_model, num_layers, num_heads, d_ff, rope_theta)
+    TransformerLM.load_state_dict(weights)
+    return TransformerLM(in_indices)
 
 
 def run_rmsnorm(
@@ -407,7 +414,7 @@ def run_rmsnorm(
         RMSNorm of the `in_features`.
     """
     norm = my_torch.RMSNorm(d_model, eps)
-    norm.load_state_dict({'weight': weights})
+    norm.load_state_dict({"weight": weights})
     return norm(in_features)
 
 
@@ -620,3 +627,144 @@ def run_train_bpe(
                 Merges are ordered by order of creation.
     """
     raise NotImplementedError
+
+
+# ============================================================================
+# Written-response answers
+# ============================================================================
+
+TRANSFORMER_ACCOUNTING = """
+Problem (transformer_accounting): Transformer LM resource accounting (handout p.26-27)
+
+Notation: V=vocab_size, T=context_length, L=num_layers, d=d_model, h=num_heads,
+F=d_ff, d_k=d/h. Our architecture: RoPE (no learned pos. emb.), RMSNorm (weight
+only, no bias), SwiGLU FFN (3 matrices), no biases, no weight tying.
+
+GPT-2 XL-shaped config: V=50,257  T=1,024  L=48  d=1,600  h=25  F=4,288
+(F is the nearest multiple of 64 to 8/3 * 1,600 = 4,266.7)
+
+----------------------------------------------------------------------------
+(a) Trainable parameters and fp32 memory
+----------------------------------------------------------------------------
+    params = V*d                        token_embeddings
+           + L * (4*d*d                 attn q,k,v,output_proj
+                  + 3*d*F               ffn w1,w2,w3
+                  + 2*d)                ln1,ln2
+           + d                          ln_final
+           + V*d                        lm_head
+
+    component                   params        share
+    token_embeddings        80,411,200        4.90%
+      per layer: attn       10,240,000
+      per layer: ffn        20,582,400
+      per layer: norms           3,200
+    all 48 layers        1,479,628,800       90.20%
+    ln_final                     1,600        0.00%
+    lm_head                 80,411,200        4.90%
+    ---------------------------------------------
+    TOTAL                1,640,452,800      100.00%
+
+ANSWER: 1,640,452,800 trainable parameters (~1.64B). At 4 bytes each that is
+6,561,811,200 bytes = 6.11 GiB (6.56 GB) just to hold the weights. (The RoPE
+sin/cos tables add 3,145,728 non-trainable buffer elements, ~12.6 MB.)
+
+----------------------------------------------------------------------------
+(b) Matrix multiplies in a forward pass, and their FLOPs
+----------------------------------------------------------------------------
+Using 2*m*n*p FLOPs for (m,n) @ (n,p). Per Transformer block, on T tokens:
+
+    matmul                          shape                       FLOPs
+    Q = x @ Wq                      (T,d)@(d,d)                 2*T*d^2
+    K = x @ Wk                      (T,d)@(d,d)                 2*T*d^2
+    V = x @ Wv                      (T,d)@(d,d)                 2*T*d^2
+    scores = Q @ K^T (per head)     (T,d_k)@(d_k,T) * h         2*T^2*d
+    out    = probs @ V (per head)   (T,T)@(T,d_k) * h           2*T^2*d
+    attn output projection          (T,d)@(d,d)                 2*T*d^2
+    ffn w1 (gate)                   (T,d)@(d,F)                 2*T*d*F
+    ffn w3 (value)                  (T,d)@(d,F)                 2*T*d*F
+    ffn w2 (down)                   (T,F)@(F,d)                 2*T*d*F
+    ------------------------------------------------------------------
+    per block                                       8*T*d^2 + 4*T^2*d + 6*T*d*F
+
+Once, at the end:
+    lm_head                         (T,d)@(d,V)                 2*T*d*V
+
+    TOTAL = L * (8*T*d^2 + 4*T^2*d + 6*T*d*F) + 2*T*d*V
+
+(RMSNorm, SiLU, softmax, RoPE and the residual adds are elementwise -- O(T*d)
+or O(T^2*h) -- and are ignored, as instructed.)
+
+For GPT-2 XL at T=1,024:
+
+    component            FLOPs               share
+    qkv_proj             7.5497e+11          21.47%
+    attn Q@K^T           1.6106e+11           4.58%
+    attn probs@V         1.6106e+11           4.58%
+    attn output_proj     2.5166e+11           7.16%
+    ffn (SwiGLU x3)      2.0233e+12          57.53%
+    lm_head              1.6468e+11           4.68%
+    -----------------------------------------------
+    TOTAL                3.5168e+12         100.00%
+
+ANSWER: ~3.52e12 FLOPs (3.52 TFLOPs) for one forward pass over 1,024 tokens.
+Sanity check: 2 * params * T = 2 * 1.64e9 * 1024 = 3.36e12, within 5% -- the
+usual "2 * N per token" rule of thumb, with the gap being the quadratic
+attention term.
+
+----------------------------------------------------------------------------
+(c) Which parts require the most FLOPs?
+----------------------------------------------------------------------------
+ANSWER: The SwiGLU feed-forward network alone is 57.5% of all FLOPs, and the
+Transformer blocks together account for 95.3% (lm_head is only 4.7%). Within a
+block the linear projections dominate: the quadratic attention term (Q@K^T and
+probs@V) is just 9.2% of the total at T=1,024.
+
+----------------------------------------------------------------------------
+(d) Same analysis for GPT-2 small / medium / large
+----------------------------------------------------------------------------
+d_ff is set by the same rule (nearest multiple of 64 to 8/3*d), all at T=1,024:
+
+  model    L   d     h   F      params         total FLOPs
+  small    12  768   12  2048   162,148,608    2.9165e+11
+  medium   24  1024  16  2752   406,539,264    8.3017e+11
+  large    36  1280  20  3392   833,591,040    1.7685e+12
+  XL       48  1600  25  4288   1,640,452,800  3.5168e+12
+
+  component          small    medium   large    XL
+  qkv_proj           14.91%   18.62%   20.49%   21.47%
+  attn Q@K^T          6.63%    6.21%    5.46%    4.58%
+  attn probs@V        6.63%    6.21%    5.46%    4.58%
+  attn output_proj    4.97%    6.21%    6.83%    7.16%
+  ffn (SwiGLU x3)    39.76%   50.05%   54.30%   57.53%
+  lm_head            27.10%   12.70%    7.45%    4.68%
+  ---------------------------------------------------
+  [blocks total]     72.90%   87.30%   92.55%   95.32%
+  [attn quadratic]   13.25%   12.42%   10.93%    9.16%
+
+ANSWER: As the model grows, the FFN takes proportionally more (39.8% -> 57.5%)
+and the lm_head collapses (27.1% -> 4.7%), because block FLOPs scale as
+L*d^2 while lm_head scales as d*V with V held fixed. The quadratic attention
+term also shrinks proportionally (13.3% -> 9.2%), since d grows while T does
+not -- at these depths the Transformer is overwhelmingly a stack of dense
+matmuls, not an attention machine.
+
+----------------------------------------------------------------------------
+(e) GPT-2 XL with context_length = 16,384
+----------------------------------------------------------------------------
+  component          T=1,024    T=16,384
+  qkv_proj            21.47%       9.04%
+  attn Q@K^T           4.58%      30.87%
+  attn probs@V         4.58%      30.87%
+  attn output_proj     7.16%       3.01%
+  ffn (SwiGLU x3)     57.53%      24.24%
+  lm_head              4.68%       1.97%
+  --------------------------------------
+  TOTAL           3.5168e+12  1.3358e+14
+
+ANSWER: Total FLOPs rise from 3.52e12 to 1.34e14, a factor of ~38x rather than
+the 16x increase in tokens, because the two quadratic attention matmuls scale
+as T^2 (256x) while every other term scales linearly in T (16x). Attention
+flips from a 9.2% side-show to 61.7% of the entire forward pass, and the FFN
+drops from 57.5% to 24.2% -- this is exactly the regime that motivates
+FlashAttention and the various sub-quadratic attention variants.
+"""

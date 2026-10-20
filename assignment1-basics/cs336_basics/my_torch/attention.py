@@ -60,7 +60,9 @@ class MultiHeadSelfAttention(torch.nn.Module):
         query: Float[torch.Tensor, "... heads sequence_length d_k"],
         key: Float[torch.Tensor, "... heads sequence_length d_k"],
         token_positions: Int[torch.Tensor, "... sequence_length"] | None,
-    ) -> tuple[Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]]:
+    ) -> tuple[
+        Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]
+    ]:
         # 基类不做位置编码；RopeMHA 覆写这个钩子来旋转 q/k，forward 主体只写一份。
         return query, key
 
@@ -103,7 +105,9 @@ class RopeMHA(MultiHeadSelfAttention):
         query: Float[torch.Tensor, "... heads sequence_length d_k"],
         key: Float[torch.Tensor, "... heads sequence_length d_k"],
         token_positions: Int[torch.Tensor, "... sequence_length"] | None,
-    ) -> tuple[Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]]:
+    ) -> tuple[
+        Float[torch.Tensor, "... heads sequence_length d_k"], Float[torch.Tensor, "... heads sequence_length d_k"]
+    ]:
         if token_positions is None:
             token_positions = torch.arange(query.size(-2), device=query.device)
         # value 不转，只有 q/k 需要带上相对位置信息。
