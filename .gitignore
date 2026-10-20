@@ -34,10 +34,8 @@ runs/
 .idea/
 .vscode/
 
-# 其他 assignment 暂未提交，做完后从这里删掉对应行
-assignment2-systems/
-assignment3-scaling/
-assignment4-data/
-assignment5-alignment/
+# 讲义代码暂只保存在本地
 lectures/
 !assignment1-basics/tests/fixtures/ts_tests/model.pt
+!assignment2-systems/tests/fixtures/ddp_test_data.pt
+!assignment2-systems/tests/fixtures/ddp_test_labels.pt

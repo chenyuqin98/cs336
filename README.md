@@ -13,7 +13,7 @@
 | `assignment5-alignment/` | 语言模型对齐与强化学习 |
 | `lectures/` | 课程讲义与示例代码 |
 
-目前 Git 跟踪以 Assignment 1 为主，其余作业和 lectures 目录仍在根目录 `.gitignore` 中，仅保存在本地。
+Assignment 1–5 统一由根目录的 Git 仓库管理。`lectures/` 目前仅保存在本地；当前没有 Assignment 6 目录。
 
 ## 开始学习
 
