@@ -23,3 +23,16 @@ class SwiGLU(torch.nn.Module):
 
     def forward(self, x):
         return self.w2(torch.mul(self.silu(self.w1(x)), self.w3(x)))
+
+
+class SiLUFeedForward(torch.nn.Module):
+    """Ungated ablation; use d_ff=4*d_model to match SwiGLU parameter count."""
+
+    def __init__(self, d_model, d_ff, device=None, dtype=None):
+        super().__init__()
+        self.w1 = Linear(d_model, d_ff, device=device, dtype=dtype)
+        self.w2 = Linear(d_ff, d_model, device=device, dtype=dtype)
+        self.silu = SiLU()
+
+    def forward(self, x):
+        return self.w2(self.silu(self.w1(x)))

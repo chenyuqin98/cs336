@@ -20,6 +20,10 @@ class RoPE(torch.nn.Module):
     ) -> Float[torch.Tensor, "... d_k"]:
         cos = self.r_cos[token_positions]
         sin = self.r_sin[token_positions]
+        # Batched positions omit the attention head axis.
+        if token_positions.ndim == x.ndim - 2:
+            cos = cos.unsqueeze(-3)
+            sin = sin.unsqueeze(-3)
 
         x_even = x[..., 0::2]
         x_odd = x[..., 1::2]
